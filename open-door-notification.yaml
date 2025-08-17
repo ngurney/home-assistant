@@ -1,15 +1,30 @@
 blueprint:
-  name: Door left open → Notify (repeat + iOS levels)
+  name: Door left open → Notify (3 recipients, repeat + iOS levels)
   description: >
     When any selected door is left open for the chosen duration, send a
-    notification via selected notify services (notify.mobile_app_xxx, groups, etc.).
-    Optional repeating reminders and iOS interruption levels.
-    Home Assistant 2024.8+.
+    push notification to up to 3 notify services (e.g., notify.mobile_app_* or
+    a notify group). If you need more than 3, create a notify group and
+    select it here (see example below).
+
+    Notify group example (add to configuration.yaml, then reload YAML or restart):
+
+        notify:
+          - name: family
+            platform: group
+            services:
+              - service: mobile_app_your_iphone
+              - service: mobile_app_partners_iphone
+              - service: mobile_app_kid_iphone
+
+    After adding, choose `notify.family` in one of the Notify service slots.
+    (More info: Home Assistant Notifications integration → group platform.)
+
   domain: automation
 
   input:
     doors:
       name: Door sensors
+      description: Binary sensors with device_class door/opening.
       selector:
         entity:
           domain: binary_sensor
@@ -18,16 +33,30 @@ blueprint:
 
     open_for:
       name: How long must it stay open?
-      selector:
-        duration: {}
+      selector: { duration: {} }
 
-    notify_services:
-      name: Notify services
-      description: Pick one or more notify.* services (mobile apps or groups).
+    # --- Pick up to 3 notify services (dropdowns) ---
+    notify_service_1:
+      name: Notify service 1
+      description: Pick a notify.* action (mobile_app device or a notify group).
       selector:
         action:
           domain: notify
-          multiple: true
+      default: null
+
+    notify_service_2:
+      name: Notify service 2 (optional)
+      selector:
+        action:
+          domain: notify
+      default: null
+
+    notify_service_3:
+      name: Notify service 3 (optional)
+      selector:
+        action:
+          domain: notify
+      default: null
 
     title:
       name: Notification title
@@ -102,7 +131,17 @@ variables:
   selected_doors: !input doors
   open_for: !input open_for
   repeat_enabled: !input repeat_enabled
-  notify_services: !input notify_services
+
+  # Collate selected notify services into a list (skip nulls)
+  s1: !input notify_service_1
+  s2: !input notify_service_2
+  s3: !input notify_service_3
+  notify_services: >-
+    {% set out = [] %}
+    {% for s in [s1, s2, s3] %}
+      {% if s is not none %}{% set out = out + [s] %}{% endif %}
+    {% endfor %}
+    {{ out }}
 
   # Build list of selected doors currently open
   open_list: >-
@@ -146,7 +185,7 @@ action:
            | map(attribute='name') | list }}
       open_count: "{{ open_list | length }}"
 
-  # iOS payload (ignored on Android)
+  # iOS payload (ignored on Android; handled by Companion app)
   - variables:
       ios_push_block: >-
         {% set sound_name = _ios_sound|trim if _ios_sound|trim else 'default' %}
@@ -165,7 +204,7 @@ action:
         {{ { "push": { "interruption-level": _ios_level } } }}
         {% endif %}
 
-  # --- Initial send ---
+  # --- Initial send (fan out to chosen services) ---
   - repeat:
       for_each: "{{ notify_services }}"
       sequence:
@@ -194,6 +233,7 @@ action:
           sequence:
             - delay: !input repeat_every
 
+            # Recompute list in case states changed
             - variables:
                 open_list: >-
                   {{ expand(selected_doors)
