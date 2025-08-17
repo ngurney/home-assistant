@@ -1,17 +1,16 @@
 blueprint:
-  name: Door left open → Notify phones (with repeat + iOS levels)
+  name: Door left open → Notify (services, repeat, iOS levels, only-people-home)
   description: >
     When any selected door is left open for the chosen duration, send a
-    notification to selected mobile_app devices and (optionally) repeat
-    until all selected doors are closed. Includes iOS interruption level
-    (passive/active/time-sensitive/critical). Home Assistant 2024.8+ (uses Actions).
+    notification via one or more notify services. Optional: repeat reminders,
+    iOS interruption levels, and notifying only mapped people who are HOME.
+    Home Assistant 2024.8+.
   domain: automation
-  source_url: https://example.invalid/door-left-open-notify
 
   input:
     doors:
       name: Door sensors
-      description: Pick one or more door sensors (binary_sensor, 'door' or 'opening').
+      description: Binary sensors with device_class door/opening.
       selector:
         entity:
           domain: binary_sensor
@@ -23,29 +22,55 @@ blueprint:
       selector:
         duration: {}
 
-    notify_devices:
-      name: Phones to notify
-      description: Devices from the mobile_app integration to receive the alert.
+    # Option A: plain list of notify services (always used when only_people_home = false)
+    notify_services_csv:
+      name: Notify services (comma-separated)
+      description: >
+        Enter one or more notify services, separated by commas.
+        Examples: notify.mobile_app_your_iphone, notify.mobile_app_partners_iphone
+        You can also use a notify group like: notify.family
       selector:
-        device:
-          integration: mobile_app
-          multiple: true
+        text: {}
+      default: ""
+
+    # Option B: only notify mapped people who are home
+    only_people_home:
+      name: Notify only these people when they are HOME?
+      description: >
+        If enabled, the mapping below is used to select recipients dynamically
+        based on person presence (state == 'home').
+      default: false
+      selector:
+        boolean: {}
+
+    people_services_map:
+      name: People ↔︎ notify service mapping (one per line)
+      description: |
+        Format: person.entity_id = notify.service_name
+        Examples:
+          person.john = notify.mobile_app_john_iphone
+          person.jane = notify.mobile_app_jane_iphone
+        Only lines with '=' are parsed; blanks and comments (# ...) are ignored.
+      selector:
+        text:
+          multiline: true
+      default: ""
 
     title:
       name: Notification title
-      default: "Door open"
+      default: "Door left open"
       selector:
         text: {}
 
     message:
-      name: Notification message (supports templates)
+      name: Notification message (templatable)
       description: >
-        Placeholders you can use:
-        - {{ which }} → the specific door that triggered
+        Placeholders:
+        - {{ which }} → door that triggered
         - {{ open_list|join(', ') }} → all currently-open selected doors
-        - {{ open_count }} → how many of the selected doors are open
+        - {{ open_count }} → how many are open
       default: >-
-        {{ which }} has been open for {{ (open_for.total_seconds() | int) }} seconds.
+        {{ which }} has been open for {{ (open_for.total_seconds()|int) }} seconds.
         Still open: {{ open_list|join(', ') }}.
       selector:
         text:
@@ -53,15 +78,14 @@ blueprint:
 
     # ---- Repeat options ----
     repeat_enabled:
-      name: Keep reminding until doors are closed?
+      name: Keep reminding until closed?
       default: true
       selector:
         boolean: {}
 
     repeat_every:
       name: Repeat interval
-      default:
-        minutes: 2
+      default: { minutes: 2 }
       selector:
         duration: {}
 
@@ -82,15 +106,11 @@ blueprint:
       default: active
       selector:
         select:
-          options:
-            - passive
-            - active
-            - time-sensitive
-            - critical
+          options: [passive, active, time-sensitive, critical]
 
     ios_critical_volume:
-      name: Critical sound volume (only if level = critical)
-      description: 0.1–1.0 (1.0 is loudest). Uses default iOS sound unless you change "iOS sound name".
+      name: Critical sound volume (if level = critical)
+      description: 0.1–1.0 (1.0 is loudest). Uses default iOS sound unless you set a name.
       default: 1.0
       selector:
         number:
@@ -101,7 +121,7 @@ blueprint:
 
     ios_sound_name:
       name: iOS sound name (optional)
-      description: Use a bundled/custom sound (e.g., "default"). Leave blank for system default.
+      description: Bundled/custom sound (e.g., "default"). Leave blank for system default.
       default: ""
       selector:
         text: {}
@@ -114,12 +134,45 @@ variables:
   open_for: !input open_for
   repeat_enabled: !input repeat_enabled
 
-  # Build a list of selected doors currently open
+  # User-provided notify services (CSV) -> list
+  _notify_services_csv: !input notify_services_csv
+  notify_services: >-
+    {{ _notify_services_csv.split(',') | map('trim') | reject('equalto','') | list }}
+
+  # Presence-gated mapping (multiline "person = notify.service")
+  only_people_home: !input only_people_home
+  _people_map_raw: !input people_services_map
+
+  # Build a list of notify services whose person is currently 'home'
+  home_notify_services: >-
+    {% set ns = namespace(lst=[]) %}
+    {% for raw in _people_map_raw.splitlines() %}
+      {% set line = raw.strip() %}
+      {% if not line or line.startswith('#') %}
+        {# skip blanks/comments #}
+      {% elif '=' in line %}
+        {% set person = line.split('=')[0].strip() %}
+        {% set service = line.split('=', 1)[1].strip() %}
+        {% if person and service and states(person) == 'home' %}
+          {% set ns.lst = ns.lst + [service] %}
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+    {{ ns.lst }}
+
+  # Final target list:
+  targets: >-
+    {% if only_people_home %}
+      {{ home_notify_services }}
+    {% else %}
+      {{ notify_services }}
+    {% endif %}
+
+  # Build list of selected doors currently open
   open_list: >-
     {{ expand(selected_doors)
        | selectattr('state','eq','on')
-       | map(attribute='name')
-       | list }}
+       | map(attribute='name') | list }}
   open_count: "{{ open_list | length }}"
 
   which: >-
@@ -149,16 +202,15 @@ condition:
 
 # ---------- Actions ----------
 action:
-  # Always (re)compute the open list at send time
+  # Recompute open list at send time
   - variables:
       open_list: >-
         {{ expand(selected_doors)
            | selectattr('state','eq','on')
-           | map(attribute='name')
-           | list }}
+           | map(attribute='name') | list }}
       open_count: "{{ open_list | length }}"
 
-  # Craft iOS-specific payload (ignored on Android)
+  # iOS payload (ignored on Android)
   - variables:
       ios_push_block: >-
         {% set sound_name = _ios_sound|trim if _ios_sound|trim else 'default' %}
@@ -169,7 +221,7 @@ action:
               "sound": {
                 "name": sound_name,
                 "critical": 1,
-                "volume": (_ios_volume | float)
+                "volume": (_ios_volume|float)
               }
             }
           } }}
@@ -177,15 +229,17 @@ action:
         {{ { "push": { "interruption-level": _ios_level } } }}
         {% endif %}
 
-  # Initial send to ALL selected devices at once (no templating needed)
-  - device_id: !input notify_devices
-    domain: mobile_app
-    type: notify
-    title: "{{ _title }}"
-    message: "{{ _message }}"
-    data: "{{ ios_push_block }}"
+  # --- Send to each chosen notify service ---
+  - repeat:
+      for_each: "{{ targets }}"
+      sequence:
+        - action: "{{ repeat.item }}"
+          data:
+            title: "{{ _title }}"
+            message: "{{ _message }}"
+            data: "{{ ios_push_block }}"
 
-  # Optional repeat loop
+  # --- Optional repeat loop ---
   - if:
       - condition: template
         value_template: "{{ repeat_enabled | bool }}"
@@ -197,27 +251,47 @@ action:
             - condition: template
               value_template: >
                 {% set any_open = expand(selected_doors)
-                   | selectattr('state','eq','on')
-                   | list | length > 0 %}
+                   | selectattr('state','eq','on') | list | length > 0 %}
                 {% set idx = repeat.index | default(0) %}
-                {% set under_limit = (_max | int == 0) or (idx < _max | int) %}
+                {% set under_limit = (_max|int == 0) or (idx < _max|int) %}
                 {{ any_open and under_limit }}
           sequence:
             - delay: !input repeat_every
 
-            # Recompute list in case door states changed
             - variables:
                 open_list: >-
                   {{ expand(selected_doors)
                      | selectattr('state','eq','on')
-                     | map(attribute='name')
-                     | list }}
+                     | map(attribute='name') | list }}
                 open_count: "{{ open_list | length }}"
 
-            # Re-send to ALL selected devices
-            - device_id: !input notify_devices
-              domain: mobile_app
-              type: notify
-              title: "{{ _title }}"
-              message: "{{ _message }}"
-              data: "{{ ios_push_block }}"
+                # Re-evaluate targets in case presence changed
+                home_notify_services: >-
+                  {% set ns = namespace(lst=[]) %}
+                  {% for raw in _people_map_raw.splitlines() %}
+                    {% set line = raw.strip() %}
+                    {% if not line or line.startswith('#') %}
+                    {% elif '=' in line %}
+                      {% set person = line.split('=')[0].strip() %}
+                      {% set service = line.split('=', 1)[1].strip() %}
+                      {% if person and service and states(person) == 'home' %}
+                        {% set ns.lst = ns.lst + [service] %}
+                      {% endif %}
+                    {% endif %}
+                  {% endfor %}
+                  {{ ns.lst }}
+                targets: >-
+                  {% if only_people_home %}
+                    {{ home_notify_services }}
+                  {% else %}
+                    {{ notify_services }}
+                  {% endif %}
+
+            - repeat:
+                for_each: "{{ targets }}"
+                sequence:
+                  - action: "{{ repeat.item }}"
+                    data:
+                      title: "{{ _title }}"
+                      message: "{{ _message }}"
+                      data: "{{ ios_push_block }}"
