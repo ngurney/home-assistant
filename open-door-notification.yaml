@@ -7,7 +7,6 @@ blueprint:
     If you need many recipients regularly, create a YAML notify group in
     configuration.yaml (platform: group) and use that single service here
     (e.g., notify.family). Home Assistant 2024.8+.
-
   domain: automation
 
   input:
@@ -128,7 +127,7 @@ variables:
       {{ trigger.to_state.name }}
     {%- else -%}{%- endif %}
 
-  # Minutes that at least one selected door has been open (max over open doors)
+  # Minutes at least one selected door has been open (max over open doors)
   open_minutes: >-
     {% set minutes = 0 %}
     {% for e in expand(selected_doors) | selectattr('state','eq','on') %}
@@ -191,7 +190,7 @@ action:
                         sound:
                           name: "{{ _ios_sound|trim if _ios_sound|trim else 'default' }}"
                           critical: 1
-                          volume: {{ _ios_volume | float }}
+                          volume: "{{ _ios_volume | float }}"
           default:
             - action: "{{ repeat.item }}"
               data:
@@ -250,7 +249,7 @@ action:
                                   sound:
                                     name: "{{ _ios_sound|trim if _ios_sound|trim else 'default' }}"
                                     critical: 1
-                                    volume: {{ _ios_volume | float }}
+                                    volume: "{{ _ios_volume | float }}"
                     default:
                       - action: "{{ repeat.item }}"
                         data:
