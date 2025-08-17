@@ -13,7 +13,7 @@ blueprint:
   input:
     doors:
       name: Door sensors
-      description: Binary sensors with device_class door/opening.
+      description: Binary sensors with device_class door or opening.
       selector:
         entity:
           domain: binary_sensor
@@ -191,7 +191,7 @@ action:
                         sound:
                           name: "{{ _ios_sound|trim if _ios_sound|trim else 'default' }}"
                           critical: 1
-                          volume: "{{ _ios_volume|float }}"
+                          volume: {{ _ios_volume | float }}
           default:
             - action: "{{ repeat.item }}"
               data:
@@ -250,7 +250,7 @@ action:
                                   sound:
                                     name: "{{ _ios_sound|trim if _ios_sound|trim else 'default' }}"
                                     critical: 1
-                                    volume: "{{ _ios_volume|float }}"
+                                    volume: {{ _ios_volume | float }}
                     default:
                       - action: "{{ repeat.item }}"
                         data:
