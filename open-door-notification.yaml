@@ -4,7 +4,7 @@ blueprint:
     When any selected door is left open for the chosen duration, send a
     mobile_app notification to up to 3 selected devices. For more than 3,
     create another automation from this blueprint or make a YAML notify group
-    (see HA Notifications → group platform). Home Assistant 2024.8+.
+    (Home Assistant Notifications → group platform). Home Assistant 2024.8+.
   domain: automation
 
   input:
@@ -57,7 +57,9 @@ blueprint:
         - {{ open_list|join(', ') }} → all currently-open selected doors
         - {{ open_count }} → how many are open
       default: >-
-        {{ which }} has been open for {{ (open_for.total_seconds()|int) }} seconds.
+        {{ which }} has been open for
+        {{ (open_for.total_seconds() / 60) | round(0) | int }}
+        minute{% if (open_for.total_seconds() / 60) | round(0) | int != 1 %}s{% endif %}.
         Still open: {{ open_list|join(', ') }}.
       selector:
         text:
