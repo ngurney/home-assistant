@@ -3,15 +3,13 @@ blueprint:
   description: >
     When any selected door is left open for the chosen duration, send a
     mobile_app notification to up to 3 selected devices. For more than 3,
-    either select a device that is itself a "notify group" device (if you use one),
-    or create additional automations from this blueprint. Supports repeat
-    reminders and iOS interruption levels. Home Assistant 2024.8+.
+    make another automation from this blueprint or switch to a YAML notify group.
+    Home Assistant 2024.8+.
   domain: automation
 
   input:
     doors:
       name: Door sensors
-      description: Binary sensors with device_class door/opening.
       selector:
         entity:
           domain: binary_sensor
@@ -20,8 +18,7 @@ blueprint:
 
     open_for:
       name: How long must it stay open?
-      selector:
-        duration: {}
+      selector: { duration: {} }
 
     # --- Up to 3 mobile_app devices to notify ---
     notify_device_1:
