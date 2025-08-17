@@ -174,34 +174,32 @@ action:
         {% endfor %}
         {{ minutes | round(0) | int }}
 
-  # iOS payload (ignored on Android; handled by Companion app)
-  - variables:
-      ios_push_block: >-
-        {% set sound_name = _ios_sound|trim if _ios_sound|trim else 'default' %}
-        {% if _ios_level == 'critical' %}
-        {{ {
-            "push": {
-              "interruption-level": "critical",
-              "sound": {
-                "name": sound_name,
-                "critical": 1,
-                "volume": (_ios_volume|float)
-              }
-            }
-          } }}
-        {% else %}
-        {{ { "push": { "interruption-level": _ios_level } } }}
-        {% endif %}
-
   # --- Initial send to each notify service ---
   - repeat:
       for_each: "{{ notify_services }}"
       sequence:
-        - action: "{{ repeat.item }}"
-          data:
-            title: "{{ _title }}"
-            message: "{{ _message }}"
-            data: "{{ ios_push_block }}"
+        - choose:
+            - conditions: "{{ _ios_level == 'critical' }}"
+              sequence:
+                - action: "{{ repeat.item }}"
+                  data:
+                    title: "{{ _title }}"
+                    message: "{{ _message }}"
+                    data:
+                      push:
+                        interruption-level: critical
+                        sound:
+                          name: "{{ _ios_sound|trim if _ios_sound|trim else 'default' }}"
+                          critical: 1
+                          volume: "{{ _ios_volume|float }}"
+          default:
+            - action: "{{ repeat.item }}"
+              data:
+                title: "{{ _title }}"
+                message: "{{ _message }}"
+                data:
+                  push:
+                    interruption-level: "{{ _ios_level }}"
 
   # --- Optional repeat loop (updates open_minutes each time) ---
   - if:
@@ -239,8 +237,25 @@ action:
             - repeat:
                 for_each: "{{ notify_services }}"
                 sequence:
-                  - action: "{{ repeat.item }}"
-                    data:
-                      title: "{{ _title }}"
-                      message: "{{ _message }}"
-                      data: "{{ ios_push_block }}"
+                  - choose:
+                      - conditions: "{{ _ios_level == 'critical' }}"
+                        sequence:
+                          - action: "{{ repeat.item }}"
+                            data:
+                              title: "{{ _title }}"
+                              message: "{{ _message }}"
+                              data:
+                                push:
+                                  interruption-level: critical
+                                  sound:
+                                    name: "{{ _ios_sound|trim if _ios_sound|trim else 'default' }}"
+                                    critical: 1
+                                    volume: "{{ _ios_volume|float }}"
+                    default:
+                      - action: "{{ repeat.item }}"
+                        data:
+                          title: "{{ _title }}"
+                          message: "{{ _message }}"
+                          data:
+                            push:
+                              interruption-level: "{{ _ios_level }}"
