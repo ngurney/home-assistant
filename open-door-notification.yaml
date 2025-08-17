@@ -56,10 +56,10 @@ blueprint:
         - {{ which }} → door that triggered
         - {{ open_list|join(', ') }} → all currently-open selected doors
         - {{ open_count }} → how many are open
+        - {{ open_minutes }} → how long (in minutes) at least one selected door has been open
       default: >-
         {{ which }} has been open for
-        {{ (open_for.total_seconds() / 60) | round(0) | int }}
-        minute{% if (open_for.total_seconds() / 60) | round(0) | int != 1 %}s{% endif %}.
+        {{ open_minutes }} minute{% if open_minutes != 1 %}s{% endif %}.
         Still open: {{ open_list|join(', ') }}.
       selector:
         text:
@@ -128,7 +128,7 @@ variables:
   d2: !input notify_device_2
   d3: !input notify_device_3
 
-  # Build list of selected doors currently open
+  # List of selected doors currently open (by friendly name)
   open_list: >-
     {{ expand(selected_doors)
        | selectattr('state','eq','on')
@@ -136,10 +136,22 @@ variables:
        | list }}
   open_count: "{{ open_list | length }}"
 
+  # Which door triggered (friendly name)
   which: >-
     {% if trigger is defined and trigger.to_state is not none -%}
       {{ trigger.to_state.name }}
     {%- else -%}{%- endif %}
+
+  # Minutes that at least one selected door has been open (max over open doors)
+  open_minutes: >-
+    {% set minutes = 0 %}
+    {% for e in expand(selected_doors) | selectattr('state','eq','on') %}
+      {% set age = (as_timestamp(now()) - as_timestamp(e.last_changed)) / 60 %}
+      {% if age > minutes %}
+        {% set minutes = age %}
+      {% endif %}
+    {% endfor %}
+    {{ minutes | round(0) | int }}
 
   _title: !input title
   _message: !input message
@@ -163,7 +175,7 @@ condition:
 
 # ---------- Actions ----------
 action:
-  # Recompute open list at send time
+  # Recompute open list and minutes at send time
   - variables:
       open_list: >-
         {{ expand(selected_doors)
@@ -171,6 +183,15 @@ action:
            | map(attribute='name')
            | list }}
       open_count: "{{ open_list | length }}"
+      open_minutes: >-
+        {% set minutes = 0 %}
+        {% for e in expand(selected_doors) | selectattr('state','eq','on') %}
+          {% set age = (as_timestamp(now()) - as_timestamp(e.last_changed)) / 60 %}
+          {% if age > minutes %}
+            {% set minutes = age %}
+          {% endif %}
+        {% endfor %}
+        {{ minutes | round(0) | int }}
 
   # iOS payload (ignored on Android; handled by Companion app)
   - variables:
@@ -224,7 +245,7 @@ action:
             message: "{{ _message }}"
             data: "{{ ios_push_block }}"
 
-  # --- Optional repeat loop ---
+  # --- Optional repeat loop (updates open_minutes each time) ---
   - if:
       - condition: template
         value_template: "{{ repeat_enabled | bool }}"
@@ -245,7 +266,7 @@ action:
           sequence:
             - delay: !input repeat_every
 
-            # Recompute list in case states changed
+            # Recompute open list and minutes for each reminder
             - variables:
                 open_list: >-
                   {{ expand(selected_doors)
@@ -253,6 +274,15 @@ action:
                      | map(attribute='name')
                      | list }}
                 open_count: "{{ open_list | length }}"
+                open_minutes: >-
+                  {% set minutes = 0 %}
+                  {% for e in expand(selected_doors) | selectattr('state','eq','on') %}
+                    {% set age = (as_timestamp(now()) - as_timestamp(e.last_changed)) / 60 %}
+                    {% if age > minutes %}
+                      {% set minutes = age %}
+                    {% endif %}
+                  {% endfor %}
+                  {{ minutes | round(0) | int }}
 
             - choose:
                 - conditions:
