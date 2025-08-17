@@ -177,16 +177,13 @@ action:
         {{ { "push": { "interruption-level": _ios_level } } }}
         {% endif %}
 
-  # Initial send to each selected device
-  - repeat:
-      for_each: !input notify_devices
-      sequence:
-        - device_id: "{{ repeat.item }}"
-          domain: mobile_app
-          type: notify
-          title: "{{ _title }}"
-          message: "{{ _message }}"
-          data: "{{ ios_push_block }}"
+  # Initial send to ALL selected devices at once (no templating needed)
+  - device_id: !input notify_devices
+    domain: mobile_app
+    type: notify
+    title: "{{ _title }}"
+    message: "{{ _message }}"
+    data: "{{ ios_push_block }}"
 
   # Optional repeat loop
   - if:
@@ -217,12 +214,10 @@ action:
                      | list }}
                 open_count: "{{ open_list | length }}"
 
-            - repeat:
-                for_each: !input notify_devices
-                sequence:
-                  - device_id: "{{ repeat.item }}"
-                    domain: mobile_app
-                    type: notify
-                    title: "{{ _title }}"
-                    message: "{{ _message }}"
-                    data: "{{ ios_push_block }}"
+            # Re-send to ALL selected devices
+            - device_id: !input notify_devices
+              domain: mobile_app
+              type: notify
+              title: "{{ _title }}"
+              message: "{{ _message }}"
+              data: "{{ ios_push_block }}"
