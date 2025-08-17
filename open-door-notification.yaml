@@ -107,6 +107,7 @@ mode: restart
 variables:
   selected_doors: !input doors
   open_for: !input open_for
+  repeat_enabled: !input repeat_enabled
 
   # Build a list of selected doors currently open
   open_list: >-
@@ -184,24 +185,22 @@ action:
           data: "{{ ios_push_block }}"
 
   # --- Optional repeat loop ---
-  - if:
-      - condition: template
-        value_template: "{{ iif(!input('repeat_enabled'), false, true) }}"
-    then:
-      - variables:
-          _max: !input max_repeats
-      - repeat:
-          while:
-            - condition: template
-              value_template: >
-                {% set any_open = expand(selected_doors)
-                   | selectattr('state','eq','on')
-                   | list
-                   | length > 0 %}
-                {% set under_limit = (_max|int == 0) or (repeat.index < _max|int) %}
-                {{ any_open and under_limit }}
-          sequence:
-            - delay: !input repeat_every
+- if:
+    - condition: template
+      value_template: "{{ repeat_enabled | bool }}"
+  then:
+    - variables:
+        _max: !input max_repeats
+    - repeat:
+        while:
+          - condition: template
+            value_template: >
+              {% set any_open = expand(selected_doors)
+                 | selectattr('state','eq','on') | list | length > 0 %}
+              {% set under_limit = (_max | int == 0) or (repeat.index < _max | int) %}
+              {{ any_open and under_limit }}
+        sequence:
+          - delay: !input repeat_every
 
             # Recompute list in case more doors changed
             - variables:
