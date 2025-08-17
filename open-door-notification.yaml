@@ -3,8 +3,8 @@ blueprint:
   description: >
     When any selected door is left open for the chosen duration, send a
     mobile_app notification to up to 3 selected devices. For more than 3,
-    make another automation from this blueprint or switch to a YAML notify group.
-    Home Assistant 2024.8+.
+    create another automation from this blueprint or make a YAML notify group
+    (see HA Notifications → group platform). Home Assistant 2024.8+.
   domain: automation
 
   input:
@@ -18,7 +18,8 @@ blueprint:
 
     open_for:
       name: How long must it stay open?
-      selector: { duration: {} }
+      selector:
+        duration: {}
 
     # --- Up to 3 mobile_app devices to notify ---
     notify_device_1:
@@ -45,7 +46,8 @@ blueprint:
     title:
       name: Notification title
       default: "Door left open"
-      selector: { text: {} }
+      selector:
+        text: {}
 
     message:
       name: Notification message (templatable)
@@ -65,12 +67,14 @@ blueprint:
     repeat_enabled:
       name: Keep reminding until closed?
       default: true
-      selector: { boolean: {} }
+      selector:
+        boolean: {}
 
     repeat_every:
       name: Repeat interval
       default: { minutes: 2 }
-      selector: { duration: {} }
+      selector:
+        duration: {}
 
     max_repeats:
       name: Max repeats (0 = unlimited)
@@ -106,7 +110,8 @@ blueprint:
       name: iOS sound name (optional)
       description: Bundled/custom sound (e.g., "default"). Blank = system default.
       default: ""
-      selector: { text: {} }
+      selector:
+        text: {}
 
 mode: restart
 
@@ -125,7 +130,8 @@ variables:
   open_list: >-
     {{ expand(selected_doors)
        | selectattr('state','eq','on')
-       | map(attribute='name') | list }}
+       | map(attribute='name')
+       | list }}
   open_count: "{{ open_list | length }}"
 
   which: >-
@@ -160,7 +166,8 @@ action:
       open_list: >-
         {{ expand(selected_doors)
            | selectattr('state','eq','on')
-           | map(attribute='name') | list }}
+           | map(attribute='name')
+           | list }}
       open_count: "{{ open_list | length }}"
 
   # iOS payload (ignored on Android; handled by Companion app)
@@ -184,7 +191,9 @@ action:
 
   # --- Initial send to each selected device ---
   - choose:
-      - conditions: "{{ d1 is not none }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ d1 is not none }}"
         sequence:
           - device_id: !input notify_device_1
             domain: mobile_app
@@ -192,7 +201,9 @@ action:
             title: "{{ _title }}"
             message: "{{ _message }}"
             data: "{{ ios_push_block }}"
-      - conditions: "{{ d2 is not none }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ d2 is not none }}"
         sequence:
           - device_id: !input notify_device_2
             domain: mobile_app
@@ -200,7 +211,9 @@ action:
             title: "{{ _title }}"
             message: "{{ _message }}"
             data: "{{ ios_push_block }}"
-      - conditions: "{{ d3 is not none }}"
+      - conditions:
+          - condition: template
+            value_template: "{{ d3 is not none }}"
         sequence:
           - device_id: !input notify_device_3
             domain: mobile_app
@@ -221,9 +234,11 @@ action:
             - condition: template
               value_template: >
                 {% set any_open = expand(selected_doors)
-                   | selectattr('state','eq','on') | list | length > 0 %}
+                   | selectattr('state','eq','on')
+                   | list
+                   | length > 0 %}
                 {% set idx = repeat.index | default(0) %}
-                {% set under_limit = (_max|int == 0) or (idx < _max|int) %}
+                {% set under_limit = (_max | int == 0) or (idx < _max | int) %}
                 {{ any_open and under_limit }}
           sequence:
             - delay: !input repeat_every
@@ -233,11 +248,14 @@ action:
                 open_list: >-
                   {{ expand(selected_doors)
                      | selectattr('state','eq','on')
-                     | map(attribute='name') | list }}
+                     | map(attribute='name')
+                     | list }}
                 open_count: "{{ open_list | length }}"
 
             - choose:
-                - conditions: "{{ d1 is not none }}"
+                - conditions:
+                    - condition: template
+                      value_template: "{{ d1 is not none }}"
                   sequence:
                     - device_id: !input notify_device_1
                       domain: mobile_app
@@ -245,7 +263,9 @@ action:
                       title: "{{ _title }}"
                       message: "{{ _message }}"
                       data: "{{ ios_push_block }}"
-                - conditions: "{{ d2 is not none }}"
+                - conditions:
+                    - condition: template
+                      value_template: "{{ d2 is not none }}"
                   sequence:
                     - device_id: !input notify_device_2
                       domain: mobile_app
@@ -253,7 +273,9 @@ action:
                       title: "{{ _title }}"
                       message: "{{ _message }}"
                       data: "{{ ios_push_block }}"
-                - conditions: "{{ d3 is not none }}"
+                - conditions:
+                    - condition: template
+                      value_template: "{{ d3 is not none }}"
                   sequence:
                     - device_id: !input notify_device_3
                       domain: mobile_app
