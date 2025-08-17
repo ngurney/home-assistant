@@ -4,12 +4,14 @@ blueprint:
     When any selected door is left open for the chosen duration, send a
     notification to selected mobile_app devices and (optionally) repeat
     until all selected doors are closed. Includes iOS interruption level
-    (passive/active/time-sensitive/critical). Home Assistant 2024.8+.
+    (passive/active/time-sensitive/critical). Home Assistant 2024.8+ (uses Actions).
   domain: automation
+  source_url: https://example.invalid/door-left-open-notify
 
   input:
     doors:
       name: Door sensors
+      description: Pick one or more door sensors (binary_sensor, 'door' or 'opening').
       selector:
         entity:
           domain: binary_sensor
@@ -23,6 +25,7 @@ blueprint:
 
     notify_devices:
       name: Phones to notify
+      description: Devices from the mobile_app integration to receive the alert.
       selector:
         device:
           integration: mobile_app
@@ -31,7 +34,8 @@ blueprint:
     title:
       name: Notification title
       default: "Door open"
-      selector: { text: {} }
+      selector:
+        text: {}
 
     message:
       name: Notification message (supports templates)
@@ -99,7 +103,8 @@ blueprint:
       name: iOS sound name (optional)
       description: Use a bundled/custom sound (e.g., "default"). Leave blank for system default.
       default: ""
-      selector: { text: {} }
+      selector:
+        text: {}
 
 mode: restart
 
@@ -153,12 +158,11 @@ action:
            | list }}
       open_count: "{{ open_list | length }}"
 
-  # Craft iOS-specific payload (works fine on Android; ignored there)
+  # Craft iOS-specific payload (ignored on Android)
   - variables:
       ios_push_block: >-
         {% set sound_name = _ios_sound|trim if _ios_sound|trim else 'default' %}
         {% if _ios_level == 'critical' %}
-        {# Critical uses the "critical sound" block #}
         {{ {
             "push": {
               "interruption-level": "critical",
@@ -173,7 +177,7 @@ action:
         {{ { "push": { "interruption-level": _ios_level } } }}
         {% endif %}
 
-  # --- Initial send to each selected device ---
+  # Initial send to each selected device
   - repeat:
       for_each: !input notify_devices
       sequence:
@@ -184,25 +188,27 @@ action:
           message: "{{ _message }}"
           data: "{{ ios_push_block }}"
 
-  # --- Optional repeat loop ---
-- if:
-    - condition: template
-      value_template: "{{ repeat_enabled | bool }}"
-  then:
-    - variables:
-        _max: !input max_repeats
-    - repeat:
-        while:
-          - condition: template
-            value_template: >
-              {% set any_open = expand(selected_doors)
-                 | selectattr('state','eq','on') | list | length > 0 %}
-              {% set under_limit = (_max | int == 0) or (repeat.index < _max | int) %}
-              {{ any_open and under_limit }}
-        sequence:
-          - delay: !input repeat_every
+  # Optional repeat loop
+  - if:
+      - condition: template
+        value_template: "{{ repeat_enabled | bool }}"
+    then:
+      - variables:
+          _max: !input max_repeats
+      - repeat:
+          while:
+            - condition: template
+              value_template: >
+                {% set any_open = expand(selected_doors)
+                   | selectattr('state','eq','on')
+                   | list | length > 0 %}
+                {% set idx = repeat.index | default(0) %}
+                {% set under_limit = (_max | int == 0) or (idx < _max | int) %}
+                {{ any_open and under_limit }}
+          sequence:
+            - delay: !input repeat_every
 
-            # Recompute list in case more doors changed
+            # Recompute list in case door states changed
             - variables:
                 open_list: >-
                   {{ expand(selected_doors)
