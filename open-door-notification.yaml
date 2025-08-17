@@ -1,24 +1,11 @@
 blueprint:
-  name: Door left open → Notify (3 recipients, repeat + iOS levels)
+  name: Door left open → Notify (3 devices, repeat + iOS levels)
   description: >
     When any selected door is left open for the chosen duration, send a
-    push notification to up to 3 notify services (e.g., notify.mobile_app_* or
-    a notify group). If you need more than 3, create a notify group and
-    select it here (see example below).
-
-    Notify group example (add to configuration.yaml, then reload YAML or restart):
-
-        notify:
-          - name: family
-            platform: group
-            services:
-              - service: mobile_app_your_iphone
-              - service: mobile_app_partners_iphone
-              - service: mobile_app_kid_iphone
-
-    After adding, choose `notify.family` in one of the Notify service slots.
-    (More info: Home Assistant Notifications integration → group platform.)
-
+    mobile_app notification to up to 3 selected devices. For more than 3,
+    either select a device that is itself a "notify group" device (if you use one),
+    or create additional automations from this blueprint. Supports repeat
+    reminders and iOS interruption levels. Home Assistant 2024.8+.
   domain: automation
 
   input:
@@ -33,29 +20,29 @@ blueprint:
 
     open_for:
       name: How long must it stay open?
-      selector: { duration: {} }
-
-    # --- Pick up to 3 notify services (dropdowns) ---
-    notify_service_1:
-      name: Notify service 1
-      description: Pick a notify.* action (mobile_app device or a notify group).
       selector:
-        action:
-          domain: notify
+        duration: {}
+
+    # --- Up to 3 mobile_app devices to notify ---
+    notify_device_1:
+      name: Notify device 1
+      selector:
+        device:
+          integration: mobile_app
       default: null
 
-    notify_service_2:
-      name: Notify service 2 (optional)
+    notify_device_2:
+      name: Notify device 2 (optional)
       selector:
-        action:
-          domain: notify
+        device:
+          integration: mobile_app
       default: null
 
-    notify_service_3:
-      name: Notify service 3 (optional)
+    notify_device_3:
+      name: Notify device 3 (optional)
       selector:
-        action:
-          domain: notify
+        device:
+          integration: mobile_app
       default: null
 
     title:
@@ -132,16 +119,10 @@ variables:
   open_for: !input open_for
   repeat_enabled: !input repeat_enabled
 
-  # Collate selected notify services into a list (skip nulls)
-  s1: !input notify_service_1
-  s2: !input notify_service_2
-  s3: !input notify_service_3
-  notify_services: >-
-    {% set out = [] %}
-    {% for s in [s1, s2, s3] %}
-      {% if s is not none %}{% set out = out + [s] %}{% endif %}
-    {% endfor %}
-    {{ out }}
+  # Selected devices (may be null)
+  d1: !input notify_device_1
+  d2: !input notify_device_2
+  d3: !input notify_device_3
 
   # Build list of selected doors currently open
   open_list: >-
@@ -204,12 +185,29 @@ action:
         {{ { "push": { "interruption-level": _ios_level } } }}
         {% endif %}
 
-  # --- Initial send (fan out to chosen services) ---
-  - repeat:
-      for_each: "{{ notify_services }}"
-      sequence:
-        - action: "{{ repeat.item }}"
-          data:
+  # --- Initial send to each selected device ---
+  - choose:
+      - conditions: "{{ d1 is not none }}"
+        sequence:
+          - device_id: !input notify_device_1
+            domain: mobile_app
+            type: notify
+            title: "{{ _title }}"
+            message: "{{ _message }}"
+            data: "{{ ios_push_block }}"
+      - conditions: "{{ d2 is not none }}"
+        sequence:
+          - device_id: !input notify_device_2
+            domain: mobile_app
+            type: notify
+            title: "{{ _title }}"
+            message: "{{ _message }}"
+            data: "{{ ios_push_block }}"
+      - conditions: "{{ d3 is not none }}"
+        sequence:
+          - device_id: !input notify_device_3
+            domain: mobile_app
+            type: notify
             title: "{{ _title }}"
             message: "{{ _message }}"
             data: "{{ ios_push_block }}"
@@ -241,11 +239,28 @@ action:
                      | map(attribute='name') | list }}
                 open_count: "{{ open_list | length }}"
 
-            - repeat:
-                for_each: "{{ notify_services }}"
-                sequence:
-                  - action: "{{ repeat.item }}"
-                    data:
+            - choose:
+                - conditions: "{{ d1 is not none }}"
+                  sequence:
+                    - device_id: !input notify_device_1
+                      domain: mobile_app
+                      type: notify
+                      title: "{{ _title }}"
+                      message: "{{ _message }}"
+                      data: "{{ ios_push_block }}"
+                - conditions: "{{ d2 is not none }}"
+                  sequence:
+                    - device_id: !input notify_device_2
+                      domain: mobile_app
+                      type: notify
+                      title: "{{ _title }}"
+                      message: "{{ _message }}"
+                      data: "{{ ios_push_block }}"
+                - conditions: "{{ d3 is not none }}"
+                  sequence:
+                    - device_id: !input notify_device_3
+                      domain: mobile_app
+                      type: notify
                       title: "{{ _title }}"
                       message: "{{ _message }}"
                       data: "{{ ios_push_block }}"
