@@ -53,7 +53,6 @@ blueprint:
         text:
           multiline: true
 
-    # ---- Repeat options ----
     repeat_enabled:
       name: Keep reminding until closed?
       default: true
@@ -74,7 +73,6 @@ blueprint:
           mode: box
           unit_of_measurement: times
 
-    # ---- iOS interruption level (no custom sound to keep YAML simple) ----
     ios_interruption_level:
       name: iPhone notification level
       description: passive, active (default), time-sensitive, or critical.
@@ -91,25 +89,21 @@ variables:
   open_for: !input open_for
   repeat_enabled: !input repeat_enabled
 
-  # Parse CSV -> list of notify services
   _csv: !input notify_services_csv
   notify_services: >-
     {{ _csv.split(',') | map('trim') | reject('equalto','') | list }}
 
-  # Build list of selected doors currently open
   open_list: >-
     {{ expand(selected_doors)
        | selectattr('state','eq','on')
        | map(attribute='name') | list }}
   open_count: "{{ open_list | length }}"
 
-  # Which door triggered (friendly name)
   which: >-
     {% if trigger is defined and trigger.to_state is not none -%}
       {{ trigger.to_state.name }}
     {%- else -%}{%- endif %}
 
-  # Minutes at least one selected door has been open (max over open doors)
   open_minutes: >-
     {% set minutes = 0 %}
     {% for e in expand(selected_doors) | selectattr('state','eq','on') %}
@@ -120,8 +114,6 @@ variables:
 
   _title: !input title
   _message: !input message
-
-  # iOS options
   _ios_level: !input ios_interruption_level
 
 # ---------- Trigger ----------
@@ -138,7 +130,6 @@ condition:
 
 # ---------- Actions ----------
 action:
-  # Recompute list and minutes at send time
   - variables:
       open_list: >-
         {{ expand(selected_doors)
@@ -153,11 +144,10 @@ action:
         {% endfor %}
         {{ minutes | round(0) | int }}
 
-  # --- Initial send to each notify service ---
   - repeat:
       for_each: "{{ notify_services }}"
       sequence:
-        - action: "{{ repeat.item }}"
+        - service: "{{ repeat.item }}"
           data:
             title: "{{ _title }}"
             message: "{{ _message }}"
@@ -165,7 +155,6 @@ action:
               push:
                 interruption-level: "{{ _ios_level }}"
 
-  # --- Optional repeat loop (updates open_minutes each time) ---
   - if:
       - condition: template
         value_template: "{{ repeat_enabled | bool }}"
@@ -201,7 +190,7 @@ action:
             - repeat:
                 for_each: "{{ notify_services }}"
                 sequence:
-                  - action: "{{ repeat.item }}"
+                  - service: "{{ repeat.item }}"
                     data:
                       title: "{{ _title }}"
                       message: "{{ _message }}"
