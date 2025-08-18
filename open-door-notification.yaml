@@ -103,18 +103,14 @@ condition:
 # ---------- Actions ----------
 action:
   - variables:
+      _opened_at: "{{ now() - open_for }}"
+
       open_list: >-
         {{ expand(selected_doors)
            | selectattr('state','eq','on')
            | map(attribute='name') | list }}
       open_count: "{{ open_list | length }}"
-      open_minutes: >-
-        {% set minutes = 0 %}
-        {% for e in expand(selected_doors) | selectattr('state','eq','on') %}
-          {% set age = (as_timestamp(now()) - as_timestamp(e.last_changed)) / 60 %}
-          {% if age > minutes %}{% set minutes = age %}{% endif %}
-        {% endfor %}
-        {{ minutes | round(0) | int }}
+      open_minutes: "{{ ((as_timestamp(now()) - as_timestamp(_opened_at)) / 60) | round(0) | int }}"
       which: >-
         {% set open_doors = expand(selected_doors) | selectattr('state','eq','on') | list %}
         {% set newest = open_doors | sort(attribute='last_changed', reverse=true) | first %}
@@ -163,13 +159,7 @@ action:
                      | selectattr('state','eq','on')
                      | map(attribute='name') | list }}
                 open_count: "{{ open_list | length }}"
-                open_minutes: >-
-                  {% set minutes = 0 %}
-                  {% for e in expand(selected_doors) | selectattr('state','eq','on') %}
-                    {% set age = (as_timestamp(now()) - as_timestamp(e.last_changed)) / 60 %}
-                    {% if age > minutes %}{% set minutes = age %}{% endif %}
-                  {% endfor %}
-                  {{ minutes | round(0) | int }}
+                open_minutes: "{{ ((as_timestamp(now()) - as_timestamp(_opened_at)) / 60) | round(0) | int }}"
                 which: >-
                   {% set open_doors = expand(selected_doors) | selectattr('state','eq','on') | list %}
                   {% set newest = open_doors | sort(attribute='last_changed', reverse=true) | first %}
