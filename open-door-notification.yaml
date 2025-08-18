@@ -4,7 +4,7 @@ blueprint:
     When any selected door is left open for the chosen duration, send a push
     to one or more notify services (comma-separated), e.g.:
       notify.mobile_app_your_iphone, notify.mobile_app_partners_iphone
-    If you need many recipients regularly, create a YAML notify group in
+    If you regularly notify many recipients, create a YAML notify group in
     configuration.yaml (platform: group) and use that single service here
     (e.g., notify.family). Home Assistant 2024.8+.
   domain: automation
@@ -12,7 +12,6 @@ blueprint:
   input:
     doors:
       name: Door sensors
-      description: Binary sensors with device_class door or opening.
       selector:
         entity:
           domain: binary_sensor
@@ -75,7 +74,7 @@ blueprint:
           mode: box
           unit_of_measurement: times
 
-    # ---- iOS interruption level & critical options ----
+    # ---- iOS interruption level (no custom sound to keep YAML simple) ----
     ios_interruption_level:
       name: iPhone notification level
       description: passive, active (default), time-sensitive, or critical.
@@ -83,23 +82,6 @@ blueprint:
       selector:
         select:
           options: [passive, active, time-sensitive, critical]
-
-    ios_critical_volume:
-      name: Critical sound volume (if level = critical)
-      description: 0.1–1.0 (1.0 is loudest).
-      default: 1.0
-      selector:
-        number:
-          min: 0.1
-          max: 1.0
-          step: 0.1
-          mode: slider
-
-    ios_sound_name:
-      name: iOS sound name (optional)
-      description: Bundled/custom sound (e.g., "default"). Blank = system default.
-      default: ""
-      selector: { text: {} }
 
 mode: restart
 
@@ -141,8 +123,6 @@ variables:
 
   # iOS options
   _ios_level: !input ios_interruption_level
-  _ios_volume: !input ios_critical_volume
-  _ios_sound: !input ios_sound_name
 
 # ---------- Trigger ----------
 trigger:
@@ -177,28 +157,13 @@ action:
   - repeat:
       for_each: "{{ notify_services }}"
       sequence:
-        - choose:
-            - conditions: "{{ _ios_level == 'critical' }}"
-              sequence:
-                - action: "{{ repeat.item }}"
-                  data:
-                    title: "{{ _title }}"
-                    message: "{{ _message }}"
-                    data:
-                      push:
-                        interruption-level: critical
-                        sound:
-                          name: "{{ _ios_sound|trim if _ios_sound|trim else 'default' }}"
-                          critical: 1
-                          volume: "{{ _ios_volume | float }}"
-          default:
-            - action: "{{ repeat.item }}"
-              data:
-                title: "{{ _title }}"
-                message: "{{ _message }}"
-                data:
-                  push:
-                    interruption-level: "{{ _ios_level }}"
+        - action: "{{ repeat.item }}"
+          data:
+            title: "{{ _title }}"
+            message: "{{ _message }}"
+            data:
+              push:
+                interruption-level: "{{ _ios_level }}"
 
   # --- Optional repeat loop (updates open_minutes each time) ---
   - if:
@@ -236,25 +201,10 @@ action:
             - repeat:
                 for_each: "{{ notify_services }}"
                 sequence:
-                  - choose:
-                      - conditions: "{{ _ios_level == 'critical' }}"
-                        sequence:
-                          - action: "{{ repeat.item }}"
-                            data:
-                              title: "{{ _title }}"
-                              message: "{{ _message }}"
-                              data:
-                                push:
-                                  interruption-level: critical
-                                  sound:
-                                    name: "{{ _ios_sound|trim if _ios_sound|trim else 'default' }}"
-                                    critical: 1
-                                    volume: "{{ _ios_volume | float }}"
-                    default:
-                      - action: "{{ repeat.item }}"
-                        data:
-                          title: "{{ _title }}"
-                          message: "{{ _message }}"
-                          data:
-                            push:
-                              interruption-level: "{{ _ios_level }}"
+                  - action: "{{ repeat.item }}"
+                    data:
+                      title: "{{ _title }}"
+                      message: "{{ _message }}"
+                      data:
+                        push:
+                          interruption-level: "{{ _ios_level }}"
