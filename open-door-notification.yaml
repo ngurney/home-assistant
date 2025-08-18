@@ -40,9 +40,8 @@ blueprint:
     message:
       name: Notification message (templated at runtime)
       default: >-
-        {{ which }} has been open for
-        {{ open_minutes }} minute{% if open_minutes != 1 %}s{% endif %}.
-        Still open: {{ open_list|join(', ') }}.
+        {which} has been open for {open_minutes} minute{%- if open_minutes != 1 %}s{% endif %}.
+        Still open: {open_list}.
       selector:
         text:
           multiline: true
@@ -121,7 +120,12 @@ action:
         {% set newest = open_doors | sort(attribute='last_changed', reverse=true) | first %}
         {{ newest.name if newest is defined else 'A door' }}
       _message: >-
-        {{ _raw_message }}
+        {{ _raw_message.format(
+            which=which,
+            open_list=', '.join(open_list),
+            open_count=open_count,
+            open_minutes=open_minutes
+        ) }}
 
   - repeat:
       for_each: "{{ notify_services }}"
@@ -171,7 +175,12 @@ action:
                   {% set newest = open_doors | sort(attribute='last_changed', reverse=true) | first %}
                   {{ newest.name if newest is defined else 'A door' }}
                 _message: >-
-                  {{ _raw_message }}
+                  {{ _raw_message.format(
+                      which=which,
+                      open_list=', '.join(open_list),
+                      open_count=open_count,
+                      open_minutes=open_minutes
+                  ) }}
 
             - repeat:
                 for_each: "{{ notify_services }}"
