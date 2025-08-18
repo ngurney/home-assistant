@@ -38,13 +38,7 @@ blueprint:
       selector: { text: {} }
 
     message:
-      name: Notification message (templatable)
-      description: >
-        Placeholders:
-        - {{ which }} → door that triggered
-        - {{ open_list|join(', ') }} → all currently-open selected doors
-        - {{ open_count }} → how many are open
-        - {{ open_minutes }} → how long (in minutes) at least one selected door has been open
+      name: Notification message (templated at runtime)
       default: >-
         {{ which }} has been open for
         {{ open_minutes }} minute{% if open_minutes != 1 %}s{% endif %}.
@@ -88,27 +82,11 @@ variables:
   selected_doors: !input doors
   open_for: !input open_for
   repeat_enabled: !input repeat_enabled
-
   _csv: !input notify_services_csv
   notify_services: >-
     {{ _csv.split(',') | map('trim') | reject('equalto','') | list }}
-
-  open_list: >-
-    {{ expand(selected_doors)
-       | selectattr('state','eq','on')
-       | map(attribute='name') | list }}
-  open_count: "{{ open_list | length }}"
-
-  open_minutes: >-
-    {% set minutes = 0 %}
-    {% for e in expand(selected_doors) | selectattr('state','eq','on') %}
-      {% set age = (as_timestamp(now()) - as_timestamp(e.last_changed)) / 60 %}
-      {% if age > minutes %}{% set minutes = age %}{% endif %}
-    {% endfor %}
-    {{ minutes | round(0) | int }}
-
   _title: !input title
-  _message: !input message
+  _raw_message: !input message
   _ios_level: !input ios_interruption_level
 
 # ---------- Trigger ----------
@@ -142,7 +120,8 @@ action:
         {% set open_doors = expand(selected_doors) | selectattr('state','eq','on') | list %}
         {% set newest = open_doors | sort(attribute='last_changed', reverse=true) | first %}
         {{ newest.name if newest is defined else 'A door' }}
-
+      _message: >-
+        {{ _raw_message }}
 
   - repeat:
       for_each: "{{ notify_services }}"
@@ -161,19 +140,20 @@ action:
     then:
       - variables:
           _max: !input max_repeats
+          _repeat_count: 0
       - repeat:
           while:
             - condition: template
               value_template: >
                 {% set any_open = expand(selected_doors)
                    | selectattr('state','eq','on') | list | length > 0 %}
-                {% set idx = repeat.index | default(0) %}
-                {% set under_limit = (_max|int == 0) or (idx < _max|int) %}
+                {% set under_limit = (_max|int == 0) or (_repeat_count < _max|int) %}
                 {{ any_open and under_limit }}
           sequence:
             - delay: !input repeat_every
 
             - variables:
+                _repeat_count: "{{ _repeat_count + 1 }}"
                 open_list: >-
                   {{ expand(selected_doors)
                      | selectattr('state','eq','on')
@@ -186,6 +166,12 @@ action:
                     {% if age > minutes %}{% set minutes = age %}{% endif %}
                   {% endfor %}
                   {{ minutes | round(0) | int }}
+                which: >-
+                  {% set open_doors = expand(selected_doors) | selectattr('state','eq','on') | list %}
+                  {% set newest = open_doors | sort(attribute='last_changed', reverse=true) | first %}
+                  {{ newest.name if newest is defined else 'A door' }}
+                _message: >-
+                  {{ _raw_message }}
 
             - repeat:
                 for_each: "{{ notify_services }}"
