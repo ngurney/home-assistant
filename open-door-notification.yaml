@@ -103,7 +103,12 @@ condition:
 # ---------- Actions ----------
 action:
   - variables:
-      _opened_at: "{{ now() - open_for }}"
+      # Compute timestamp when door first met the "open_for" requirement
+      _opened_at: >-
+        {% set s = open_for.seconds | default(0) %}
+        {% set m = open_for.minutes | default(0) %}
+        {% set h = open_for.hours | default(0) %}
+        {{ now() - timedelta(hours=h, minutes=m, seconds=s) }}
 
       open_list: >-
         {{ expand(selected_doors)
