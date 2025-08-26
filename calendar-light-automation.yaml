@@ -96,14 +96,14 @@ action:
                     brightness: 255
                 - delay:
                     seconds: "{{ flash_interval }}"
-      - default:
-          - service: light.turn_on
-            target: "{{ light }}"
-            data:
-              rgb_color: "{{ transition_color }}"
-              brightness: 255
-          - delay:
-              seconds: "{{ transition_seconds }}"
+    default:
+      - service: light.turn_on
+        target: "{{ light }}"
+        data:
+          rgb_color: "{{ transition_color }}"
+          brightness: 255
+      - delay:
+          seconds: "{{ transition_seconds }}"
 
   - service: light.turn_on
     target: "{{ light }}"
