@@ -2,18 +2,48 @@ blueprint:
   name: Calendar Meeting Light Status
   description: >
     Sets a light to reflect meeting status—warns before, indicates during,
-    and resets after. Fully customizable colors and durations; supports flashing.
+    and resets after. Fully customizable colors and durations; optional flashing.
   domain: automation
 
   input:
-    calendar_entities:
-      name: Calendar Entities
-      description: One or more calendars to monitor.
+    # ----- Calendars (up to 6; leave unused ones empty) -----
+    calendar_1:
+      name: Calendar 1
       selector:
         entity:
           domain: calendar
-          multiple: true
+    calendar_2:
+      name: Calendar 2 (optional)
+      default:
+      selector:
+        entity:
+          domain: calendar
+    calendar_3:
+      name: Calendar 3 (optional)
+      default:
+      selector:
+        entity:
+          domain: calendar
+    calendar_4:
+      name: Calendar 4 (optional)
+      default:
+      selector:
+        entity:
+          domain: calendar
+    calendar_5:
+      name: Calendar 5 (optional)
+      default:
+      selector:
+        entity:
+          domain: calendar
+    calendar_6:
+      name: Calendar 6 (optional)
+      default:
+      selector:
+        entity:
+          domain: calendar
 
+    # ----- Targets -----
     light_target:
       name: Light Target
       selector:
@@ -21,20 +51,20 @@ blueprint:
           entity:
             domain: light
 
+    # ----- Timing -----
     reminder_offset:
-      name: Reminder Time Before Meeting
+      name: Reminder time before meeting (turn to transition color)
       default: { minutes: 5 }
-      selector:
-        duration: {}
+      selector: { duration: {} }
 
     transition_duration:
-      name: Transition Flash Duration
+      name: Transition flash duration (last minutes before start; 0 = no flashing)
       default: { minutes: 1 }
-      selector:
-        duration: {}
+      selector: { duration: {} }
 
     flash_interval:
-      name: Flash Interval Seconds
+      name: Flash interval (seconds)
+      description: Only used if transition_duration > 0.
       default: 5
       selector:
         number:
@@ -42,30 +72,26 @@ blueprint:
           max: 60
           unit_of_measurement: seconds
 
+    # ----- Colors -----
     base_color:
-      name: Base Color (No Meeting)
+      name: Base color (no meeting)
       default: [0, 255, 0]
       selector:
         color_rgb: {}
 
     transition_color:
-      name: Transition Color (Pre‑meeting)
+      name: Transition color (pre-meeting)
       default: [255, 255, 0]
       selector:
         color_rgb: {}
 
     meeting_color:
-      name: Meeting Color (During)
+      name: Meeting color (during)
       default: [255, 0, 0]
       selector:
         color_rgb: {}
 
-trigger:
-  - platform: calendar
-    event: start
-    entity_id: !input calendar_entities
-    offset: !input reminder_offset
-
+# ---------- Variables ----------
 variables:
   base_color: !input base_color
   transition_color: !input transition_color
@@ -75,21 +101,56 @@ variables:
   flash_interval: !input flash_interval
   transition_seconds: "{{ (as_timedelta(transition_duration)).total_seconds() | int }}"
 
+# ---------- Triggers (one per selected calendar) ----------
+trigger:
+  - platform: calendar
+    event: start
+    entity_id: !input calendar_1
+    offset: !input reminder_offset
+    enabled: "{{ iif(calendar_1 is defined and calendar_1 is not none, true, false) }}"
+  - platform: calendar
+    event: start
+    entity_id: !input calendar_2
+    offset: !input reminder_offset
+    enabled: "{{ iif(calendar_2 is defined and calendar_2 is not none, true, false) }}"
+  - platform: calendar
+    event: start
+    entity_id: !input calendar_3
+    offset: !input reminder_offset
+    enabled: "{{ iif(calendar_3 is defined and calendar_3 is not none, true, false) }}"
+  - platform: calendar
+    event: start
+    entity_id: !input calendar_4
+    offset: !input reminder_offset
+    enabled: "{{ iif(calendar_4 is defined and calendar_4 is not none, true, false) }}"
+  - platform: calendar
+    event: start
+    entity_id: !input calendar_5
+    offset: !input reminder_offset
+    enabled: "{{ iif(calendar_5 is defined and calendar_5 is not none, true, false) }}"
+  - platform: calendar
+    event: start
+    entity_id: !input calendar_6
+    offset: !input reminder_offset
+    enabled: "{{ iif(calendar_6 is defined and calendar_6 is not none, true, false) }}"
+
+# ---------- Actions ----------
 action:
+  # Pre-meeting phase: either flash between transition & meeting color (optional) or hold transition color
   - choose:
       - conditions: "{{ transition_seconds > 0 }}"
         sequence:
           - repeat:
-              count: "{{ (transition_seconds / (flash_interval * 2)) | int }}"
+              count: "{{ max(1, (transition_seconds / (flash_interval * 2)) | int) }}"
               sequence:
-                - service: light.turn_on
+                - action: light.turn_on
                   target: "{{ light }}"
                   data:
                     rgb_color: "{{ transition_color }}"
                     brightness: 255
                 - delay:
                     seconds: "{{ flash_interval }}"
-                - service: light.turn_on
+                - action: light.turn_on
                   target: "{{ light }}"
                   data:
                     rgb_color: "{{ meeting_color }}"
@@ -97,7 +158,7 @@ action:
                 - delay:
                     seconds: "{{ flash_interval }}"
     default:
-      - service: light.turn_on
+      - action: light.turn_on
         target: "{{ light }}"
         data:
           rgb_color: "{{ transition_color }}"
@@ -105,18 +166,21 @@ action:
       - delay:
           seconds: "{{ transition_seconds }}"
 
-  - service: light.turn_on
+  # Meeting starts: stay on meeting color until the event ends
+  - action: light.turn_on
     target: "{{ light }}"
     data:
       rgb_color: "{{ meeting_color }}"
       brightness: 255
 
+  # Wait exactly until this triggering event ends
   - delay:
       seconds: >
         {% set end = as_datetime(trigger.calendar_event.end) %}
         {{ (end.timestamp() - now().timestamp()) | max(0) | int }}
 
-  - service: light.turn_on
+  # Meeting ended: return to base color
+  - action: light.turn_on
     target: "{{ light }}"
     data:
       rgb_color: "{{ base_color }}"
