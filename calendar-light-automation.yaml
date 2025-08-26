@@ -71,8 +71,9 @@ variables:
   transition_color: !input transition_color
   meeting_color: !input meeting_color
   light: !input light_target
-  transition_seconds: "{{ (as_timedelta(!input transition_duration)).total_seconds() | int }}"
+  transition_duration: !input transition_duration
   flash_interval: !input flash_interval
+  transition_seconds: "{{ (as_timedelta(transition_duration)).total_seconds() | int }}"
 
 action:
   - choose:
