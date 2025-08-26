@@ -1,11 +1,13 @@
 blueprint:
   name: Calendar Meeting Light Status
   description: >
-    Set a light to reflect meeting status from a calendar—warn before, show during, and reset after.
-    Fully configurable colors and timings. Optional flashing in the final pre-meeting window.
+    Set a light to reflect meeting status from a calendar—warn before, show during,
+    and reset after. Fully configurable colors and timings. Optional flashing during the
+    final pre-meeting window. Supports optional person/home check and a time window.
   domain: automation
 
   input:
+    # Calendar & light
     calendar_entity:
       name: Calendar
       description: Calendar to monitor for events.
@@ -21,14 +23,46 @@ blueprint:
           entity:
             domain: light
 
+    # Optional presence restriction
+    person_entity:
+      name: Person (optional)
+      description: Only run when this person is home. Leave empty to always run.
+      default: ""
+      selector:
+        entity:
+          domain: person
+
+    # Time window restriction
+    active_start:
+      name: Active window start time
+      default: "07:00:00"
+      selector: { time: {} }
+
+    active_end:
+      name: Active window end time
+      default: "21:00:00"
+      selector: { time: {} }
+
+    active_weekdays:
+      name: Active weekdays
+      description: Only run on these days.
+      default: [mon, tue, wed, thu, fri]
+      selector:
+        select:
+          multiple: true
+          mode: list
+          options: [mon, tue, wed, thu, fri, sat, sun]
+
     # Timing
     reminder_offset:
-      name: Reminder time before meeting (switch to transition color or start flash window)
+      name: Reminder time before meeting (pre-meeting window)
+      description: Total time before the meeting when the light should switch to the transition phase.
       default: { minutes: 5 }
       selector: { duration: {} }
 
     transition_duration:
-      name: Final pre-meeting window (flashing). Set to 0 to disable flashing.
+      name: Final pre-meeting flashing window (0 = no flashing)
+      description: In the final part of the pre-meeting window, optionally flash between transition and meeting colors.
       default: { minutes: 1 }
       selector: { duration: {} }
 
@@ -40,6 +74,7 @@ blueprint:
         number:
           min: 1
           max: 60
+          mode: slider
           unit_of_measurement: seconds
 
     # Colors
@@ -70,19 +105,49 @@ trigger:
 
 # ---------- Variables ----------
 variables:
+  # Inputs for templating
+  person_id: !input person_entity
   base_color: !input base_color
   transition_color: !input transition_color
   meeting_color: !input meeting_color
-  light: !input light_target
   transition_duration: !input transition_duration
+  reminder_offset: !input reminder_offset
   flash_interval: !input flash_interval
+
+  # Seconds math
   transition_seconds: "{{ (as_timedelta(transition_duration)).total_seconds() | int }}"
+  reminder_seconds: "{{ (as_timedelta(reminder_offset)).total_seconds() | int }}"
+  static_seconds: "{{ [reminder_seconds - transition_seconds, 0] | max }}"
+
+# ---------- Conditions ----------
+condition:
+  # Presence (optional). If no person selected, allow; otherwise require 'home'.
+  - condition: template
+    value_template: >-
+      {% set p = person_id %}
+      {{ p == '' or states(p) == 'home' }}
+
+  # Time window (start/end/weekday)
+  - condition: time
+    after: !input active_start
+    before: !input active_end
+    weekday: !input active_weekdays
 
 # ---------- Actions ----------
 action:
-  # Pre-meeting window:
-  # If transition_duration > 0, flash between transition and meeting colors during that window.
-  # Otherwise, just hold transition color until the meeting starts.
+  # 1) Pre-meeting: set transition color immediately at trigger.
+  - action: light.turn_on
+    target: !input light_target
+    data:
+      rgb_color: "{{ transition_color }}"
+      brightness: 255
+      transition: 2
+
+  # 2) Hold transition color for the static pre-meeting portion (reminder - transition).
+  - delay:
+      seconds: "{{ static_seconds }}"
+
+  # 3) Final pre-meeting window: optional flashing between transition and meeting colors.
   - choose:
       - conditions: "{{ transition_seconds > 0 }}"
         sequence:
@@ -90,46 +155,42 @@ action:
               count: "{{ max(1, (transition_seconds / (flash_interval * 2)) | int) }}"
               sequence:
                 - action: light.turn_on
-                  target: "{{ light }}"
+                  target: !input light_target
                   data:
                     rgb_color: "{{ transition_color }}"
                     brightness: 255
+                    transition: 1
                 - delay:
                     seconds: "{{ flash_interval }}"
                 - action: light.turn_on
-                  target: "{{ light }}"
+                  target: !input light_target
                   data:
                     rgb_color: "{{ meeting_color }}"
                     brightness: 255
+                    transition: 1
                 - delay:
                     seconds: "{{ flash_interval }}"
-    default:
-      - action: light.turn_on
-        target: "{{ light }}"
-        data:
-          rgb_color: "{{ transition_color }}"
-          brightness: 255
-      - delay:
-          seconds: "{{ transition_seconds }}"
 
-  # Meeting starts: stay on meeting color
+  # 4) Meeting starts: stay on meeting color for the event duration.
   - action: light.turn_on
-    target: "{{ light }}"
+    target: !input light_target
     data:
       rgb_color: "{{ meeting_color }}"
       brightness: 255
+      transition: 2
 
-  # Wait until this event ends (uses the triggering calendar event end)
+  # Wait exactly until this calendar event ends.
   - delay:
       seconds: >
         {% set end = as_datetime(trigger.calendar_event.end) %}
         {{ (end.timestamp() - now().timestamp()) | max(0) | int }}
 
-  # Meeting ended: return to base color
+  # 5) Meeting ended: return to base color.
   - action: light.turn_on
-    target: "{{ light }}"
+    target: !input light_target
     data:
       rgb_color: "{{ base_color }}"
       brightness: 255
+      transition: 2
 
 mode: restart
