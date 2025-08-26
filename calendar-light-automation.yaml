@@ -2,15 +2,17 @@ blueprint:
   name: Calendar Meeting Light Status
   description: >
     Sets a light to reflect meeting status—warns before, indicates during,
-    and resets after. Fully customizable colors and durations; optional flashing.
+    and resets after. Fully customizable colors and durations; supports flashing.
   domain: automation
 
   input:
-    calendar:
-      name: Calendar Entity
+    calendar_entities:
+      name: Calendar Entities
+      description: One or more calendars to monitor.
       selector:
         entity:
           domain: calendar
+          multiple: true
 
     light_target:
       name: Light Target
@@ -61,18 +63,18 @@ blueprint:
 trigger:
   - platform: calendar
     event: start
-    entity_id: !input calendar
+    entity_id: !input calendar_entities
     offset: !input reminder_offset
 
-action:
-  - variables:
-      base_color: !input base_color
-      transition_color: !input transition_color
-      meeting_color: !input meeting_color
-      light: !input light_target
-      transition_seconds: "{{ (!input transition_duration).total_seconds() | int }}"
-      flash_interval: !input flash_interval
+variables:
+  base_color: !input base_color
+  transition_color: !input transition_color
+  meeting_color: !input meeting_color
+  light: !input light_target
+  transition_seconds: "{{ (as_timedelta(!input transition_duration)).total_seconds() | int }}"
+  flash_interval: !input flash_interval
 
+action:
   - choose:
       - conditions: "{{ transition_seconds > 0 }}"
         sequence:
