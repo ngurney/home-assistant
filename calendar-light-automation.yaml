@@ -1,8 +1,8 @@
 blueprint:
   name: Calendar Meeting Light Status
   description: >
-    Sets a light to reflect meeting status from a calendar—warns before, indicates during, and resets after.
-    Fully customizable colors and durations. Supports optional transition flashing.
+    Sets a light to reflect meeting status—warns before, indicates during,
+    and resets after. Fully customizable colors and durations; optional flashing.
   domain: automation
 
   input:
@@ -70,7 +70,7 @@ action:
       transition_color: !input transition_color
       meeting_color: !input meeting_color
       light: !input light_target
-      transition_seconds: "{{ !input transition_duration.total_seconds() | int }}"
+      transition_seconds: "{{ ( !input transition_duration ).total_seconds() | int }}"
       flash_interval: !input flash_interval
 
   - choose:
