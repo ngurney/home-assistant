@@ -44,19 +44,19 @@ blueprint:
       name: Base Color (No Meeting)
       default: [0, 255, 0]
       selector:
-        color_rgb:
+        color_rgb: {}
 
     transition_color:
       name: Transition Color (Pre‑meeting)
       default: [255, 255, 0]
       selector:
-        color_rgb:
+        color_rgb: {}
 
     meeting_color:
       name: Meeting Color (During)
       default: [255, 0, 0]
       selector:
-        color_rgb:
+        color_rgb: {}
 
 trigger:
   - platform: calendar
@@ -70,7 +70,7 @@ action:
       transition_color: !input transition_color
       meeting_color: !input meeting_color
       light: !input light_target
-      transition_seconds: "{{ ( !input transition_duration ).total_seconds() | int }}"
+      transition_seconds: "{{ (!input transition_duration).total_seconds() | int }}"
       flash_interval: !input flash_interval
 
   - choose:
@@ -84,7 +84,6 @@ action:
                   data:
                     rgb_color: "{{ transition_color }}"
                     brightness: 255
-                    transition: 1
                 - delay:
                     seconds: "{{ flash_interval }}"
                 - service: light.turn_on
@@ -92,7 +91,6 @@ action:
                   data:
                     rgb_color: "{{ meeting_color }}"
                     brightness: 255
-                    transition: 1
                 - delay:
                     seconds: "{{ flash_interval }}"
       - default:
@@ -101,7 +99,6 @@ action:
             data:
               rgb_color: "{{ transition_color }}"
               brightness: 255
-              transition: 2
           - delay:
               seconds: "{{ transition_seconds }}"
 
@@ -110,7 +107,6 @@ action:
     data:
       rgb_color: "{{ meeting_color }}"
       brightness: 255
-      transition: 2
 
   - delay:
       seconds: >
@@ -122,6 +118,5 @@ action:
     data:
       rgb_color: "{{ base_color }}"
       brightness: 255
-      transition: 2
 
 mode: restart
