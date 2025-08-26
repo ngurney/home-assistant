@@ -1,0 +1,141 @@
+blueprint:
+  name: Calendar Meeting Light Status
+  description: >
+    Sets a light to reflect meeting status from a calendar—warns before, indicates during, and resets after. 
+    Fully customizable colors and durations. Supports optional transition flashing.
+  domain: automation
+
+  input:
+    calendar:
+      name: Calendar Entity
+      description: Calendar to monitor for upcoming events.
+      selector:
+        entity:
+          domain: calendar
+
+    light_target:
+      name: Light Target
+      description: The light to control for visual meeting indicators.
+      selector:
+        target:
+          entity:
+            domain: light
+
+    reminder_offset:
+      name: Reminder Time Before Meeting
+      description: Time before meeting to change to transition color.
+      default: { minutes: 5 }
+      selector:
+        duration: {}
+
+    transition_duration:
+      name: Transition Flash Duration
+      description: Duration for flashing between transition and meeting colors before meeting starts. Set to 0 to disable flashing.
+      default: { minutes: 1 }
+      selector:
+        duration: {}
+
+    flash_interval:
+      name: Flash Interval
+      description: Time between flashes (if enabled).
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 60
+          unit_of_measurement: seconds
+
+    base_color:
+      name: Base Color (No Meeting)
+      default: [0, 255, 0]
+      selector:
+        color: {}
+
+    transition_color:
+      name: Transition Color (Pre‑meeting)
+      default: [255, 255, 0]
+      selector:
+        color: {}
+
+    meeting_color:
+      name: Meeting Color (During)
+      default: [255, 0, 0]
+      selector:
+        color: {}
+
+  trigger:
+    - platform: calendar
+      event: start
+      entity_id: !input calendar
+      offset: !input reminder_offset
+
+  variables:
+    calendar_entity: !input calendar
+    base_color: !input base_color
+    transition_color: !input transition_color
+    meeting_color: !input meeting_color
+    light: !input light_target
+    transition_duration: !input transition_duration
+    flash_interval: !input flash_interval
+    transition_seconds: "{{ transition_duration.total_seconds() | int }}"
+    end_time: "{{ as_datetime(trigger.calendar_event.end) if trigger.calendar_event.end else now() + timedelta(minutes=30) }}"
+    now_time: "{{ now() }}"
+    time_to_end: "{{ (end_time - now_time).total_seconds() | int }}"
+
+  action:
+    - alias: Transition Phase (static or flashing)
+      choose:
+        - conditions: "{{ transition_seconds > 0 }}"
+          sequence:
+            - alias: Flash Transition + Meeting Color
+              repeat:
+                count: "{{ (transition_seconds / (flash_interval * 2)) | int }}"
+                sequence:
+                  - service: light.turn_on
+                    target: "{{ light }}"
+                    data:
+                      rgb_color: "{{ transition_color }}"
+                      brightness: 255
+                      transition: 1
+                  - delay:
+                      seconds: "{{ flash_interval }}"
+                  - service: light.turn_on
+                    target: "{{ light }}"
+                    data:
+                      rgb_color: "{{ meeting_color }}"
+                      brightness: 255
+                      transition: 1
+                  - delay:
+                      seconds: "{{ flash_interval }}"
+        - conditions: []
+          sequence:
+            - alias: Static Transition Color Only
+              service: light.turn_on
+              target: "{{ light }}"
+              data:
+                rgb_color: "{{ transition_color }}"
+                brightness: 255
+                transition: 2
+            - delay:
+                seconds: "{{ transition_seconds }}"
+
+    - alias: Meeting Begins – Stay on Meeting Color
+      service: light.turn_on
+      target: "{{ light }}"
+      data:
+        rgb_color: "{{ meeting_color }}"
+        brightness: 255
+        transition: 2
+
+    - delay:
+        seconds: "{{ time_to_end }}"
+
+    - alias: Meeting Ends – Reset to Base Color
+      service: light.turn_on
+      target: "{{ light }}"
+      data:
+        rgb_color: "{{ base_color }}"
+        brightness: 255
+        transition: 2
+
+  mode: restart
