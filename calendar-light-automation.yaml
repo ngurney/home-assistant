@@ -53,10 +53,21 @@ blueprint:
           mode: list
           options: [mon, tue, wed, thu, fri, sat, sun]
 
-    # Timing
-    reminder_offset:
-      name: Reminder time before meeting (pre-meeting window)
-      description: Total time before the meeting when the light should switch to the transition phase.
+    # Calendar TRIGGER offset (must be a string like -HH:MM:SS)
+    reminder_offset_str:
+      name: Reminder offset (calendar trigger)
+      description: >
+        Offset relative to meeting start (negative for before).
+        Example: -00:05:00 (five minutes before start).
+      default: "-00:05:00"
+      selector: { text: {} }
+
+    # Behavior window (used for pre-meeting timing)
+    pre_window:
+      name: Pre-meeting window length
+      description: >
+        Total time before the meeting during which the light shows the transition phase.
+        Keep this in sync with the offset above (e.g., 5 minutes).
       default: { minutes: 5 }
       selector: { duration: {} }
 
@@ -101,7 +112,7 @@ trigger:
   - platform: calendar
     event: start
     entity_id: !input calendar_entity
-    offset: !input reminder_offset
+    offset: !input reminder_offset_str
 
 # ---------- Variables ----------
 variables:
@@ -110,22 +121,22 @@ variables:
   base_color: !input base_color
   transition_color: !input transition_color
   meeting_color: !input meeting_color
+  pre_window: !input pre_window
   transition_duration: !input transition_duration
-  reminder_offset: !input reminder_offset
   flash_interval: !input flash_interval
 
   # Seconds math
+  pre_seconds: "{{ (as_timedelta(pre_window)).total_seconds() | int }}"
   transition_seconds: "{{ (as_timedelta(transition_duration)).total_seconds() | int }}"
-  reminder_seconds: "{{ (as_timedelta(reminder_offset)).total_seconds() | int }}"
-  static_seconds: "{{ [reminder_seconds - transition_seconds, 0] | max }}"
+  static_seconds: "{{ [pre_seconds - transition_seconds, 0] | max }}"
 
 # ---------- Conditions ----------
 condition:
-  # Presence (optional). If no person selected, allow; otherwise require 'home'.
+  # Presence (optional). If no person selected (None/empty), allow; otherwise require 'home'.
   - condition: template
     value_template: >-
       {% set p = person_id %}
-      {{ p == '' or states(p) == 'home' }}
+      {{ (not p) or is_state(p, 'home') }}
 
   # Time window (start/end/weekday)
   - condition: time
@@ -136,14 +147,14 @@ condition:
 # ---------- Actions ----------
 action:
   # 1) Pre-meeting: set transition color immediately at trigger.
-  - action: light.turn_on
+  - service: light.turn_on
     target: !input light_target
     data:
       rgb_color: "{{ transition_color }}"
       brightness: 255
       transition: 2
 
-  # 2) Hold transition color for the static pre-meeting portion (reminder - transition).
+  # 2) Hold transition color for the static pre-meeting portion (pre_window - transition).
   - delay:
       seconds: "{{ static_seconds }}"
 
@@ -154,7 +165,7 @@ action:
           - repeat:
               count: "{{ max(1, (transition_seconds / (flash_interval * 2)) | int) }}"
               sequence:
-                - action: light.turn_on
+                - service: light.turn_on
                   target: !input light_target
                   data:
                     rgb_color: "{{ transition_color }}"
@@ -162,7 +173,7 @@ action:
                     transition: 1
                 - delay:
                     seconds: "{{ flash_interval }}"
-                - action: light.turn_on
+                - service: light.turn_on
                   target: !input light_target
                   data:
                     rgb_color: "{{ meeting_color }}"
@@ -172,7 +183,7 @@ action:
                     seconds: "{{ flash_interval }}"
 
   # 4) Meeting starts: stay on meeting color for the event duration.
-  - action: light.turn_on
+  - service: light.turn_on
     target: !input light_target
     data:
       rgb_color: "{{ meeting_color }}"
@@ -186,7 +197,7 @@ action:
         {{ (end.timestamp() - now().timestamp()) | max(0) | int }}
 
   # 5) Meeting ended: return to base color.
-  - action: light.turn_on
+  - service: light.turn_on
     target: !input light_target
     data:
       rgb_color: "{{ base_color }}"
