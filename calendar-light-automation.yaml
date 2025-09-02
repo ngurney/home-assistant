@@ -62,15 +62,7 @@ blueprint:
       default: "-00:05:00"
       selector: { text: {} }
 
-    # Behavior window (used for pre-meeting timing)
-    pre_window:
-      name: Pre-meeting window length
-      description: >
-        Total time before the meeting during which the light shows the transition phase.
-        Keep this in sync with the offset above (e.g., 5 minutes).
-      default: { minutes: 5 }
-      selector: { duration: {} }
-
+    # Final pre-meeting flashing window (derived from offset; set to 0 to disable)
     transition_duration:
       name: Final pre-meeting flashing window (0 = no flashing)
       description: In the final part of the pre-meeting window, optionally flash between transition and meeting colors.
@@ -121,12 +113,15 @@ variables:
   base_color: !input base_color
   transition_color: !input transition_color
   meeting_color: !input meeting_color
-  pre_window: !input pre_window
   transition_duration: !input transition_duration
   flash_interval: !input flash_interval
+  offset_str: !input reminder_offset_str
 
-  # Seconds math
-  pre_seconds: "{{ (as_timedelta(pre_window)).total_seconds() | int }}"
+  # Parse the offset string (-HH:MM:SS or HH:MM:SS) to seconds magnitude
+  # We use the absolute value as the total pre-meeting window length.
+  _off_clean: "{{ (offset_str | trim) }}"
+  _time_str: "{{ _off_clean.lstrip('+-') }}"
+  pre_seconds: "{{ (as_timedelta(_time_str)).total_seconds() | int }}"
   transition_seconds: "{{ (as_timedelta(transition_duration)).total_seconds() | int }}"
   static_seconds: "{{ [pre_seconds - transition_seconds, 0] | max }}"
 
@@ -154,7 +149,7 @@ action:
       brightness: 255
       transition: 2
 
-  # 2) Hold transition color for the static pre-meeting portion (pre_window - transition).
+  # 2) Hold transition color for the static pre-meeting portion (pre_seconds - transition_seconds).
   - delay:
       seconds: "{{ static_seconds }}"
 
