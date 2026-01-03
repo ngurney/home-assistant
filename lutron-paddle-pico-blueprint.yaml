@@ -1,0 +1,192 @@
+blueprint:
+  name: Lutron Pico Paddle (PJ2-1P-GXX) – Advanced Button Actions
+  description: >
+    Supports press, double press, hold, and release for ON/OFF
+    buttons on a Lutron Pico Paddle using the official Caséta integration.
+  domain: automation
+  input:
+    pico_device:
+      name: Pico Remote
+      selector:
+        device:
+          integration: lutron_caseta
+
+    double_press_delay:
+      name: Double Press Max Delay (ms)
+      default: 350
+      selector:
+        number:
+          min: 100
+          max: 800
+          unit_of_measurement: ms
+          mode: slider
+
+    hold_delay:
+      name: Hold Delay (ms)
+      default: 600
+      selector:
+        number:
+          min: 300
+          max: 2000
+          unit_of_measurement: ms
+          mode: slider
+
+    on_press:
+      name: ON – Single Press
+      default: []
+      selector:
+        action: {}
+
+    on_double_press:
+      name: ON – Double Press
+      default: []
+      selector:
+        action: {}
+
+    on_hold:
+      name: ON – Hold
+      default: []
+      selector:
+        action: {}
+
+    on_release:
+      name: ON – Release
+      default: []
+      selector:
+        action: {}
+
+    off_press:
+      name: OFF – Single Press
+      default: []
+      selector:
+        action: {}
+
+    off_double_press:
+      name: OFF – Double Press
+      default: []
+      selector:
+        action: {}
+
+    off_hold:
+      name: OFF – Hold
+      default: []
+      selector:
+        action: {}
+
+    off_release:
+      name: OFF – Release
+      default: []
+      selector:
+        action: {}
+
+mode: restart
+max_exceeded: silent
+
+trigger:
+  - platform: event
+    event_type: lutron_caseta_button_event
+
+variables:
+  device_id: !input pico_device
+  button: "{{ trigger.event.data.button_type }}"
+  action: "{{ trigger.event.data.action }}"
+  this_device: "{{ trigger.event.data.device_id }}"
+
+condition:
+  - condition: template
+    value_template: "{{ this_device == device_id }}"
+
+action:
+  - choose:
+
+      # =========================
+      # ON BUTTON
+      # =========================
+      - conditions:
+          - "{{ button == 'on' and action == 'press' }}"
+        sequence:
+          - wait_for_trigger:
+              - platform: event
+                event_type: lutron_caseta_button_event
+                event_data:
+                  device_id: "{{ device_id }}"
+                  button_type: "on"
+                  action: "press"
+            timeout:
+              milliseconds: !input double_press_delay
+            continue_on_timeout: true
+
+          - choose:
+              - conditions:
+                  - "{{ wait.trigger is not none }}"
+                sequence: !input on_double_press
+            default: !input on_press
+
+          - delay:
+              milliseconds: !input hold_delay
+
+          - wait_for_trigger:
+              - platform: event
+                event_type: lutron_caseta_button_event
+                event_data:
+                  device_id: "{{ device_id }}"
+                  button_type: "on"
+                  action: "release"
+            timeout:
+              milliseconds: 10
+            continue_on_timeout: true
+
+          - choose:
+              - conditions:
+                  - "{{ wait.trigger is none }}"
+                sequence: !input on_hold
+
+      - conditions:
+          - "{{ button == 'on' and action == 'release' }}"
+        sequence: !input on_release
+
+      # =========================
+      # OFF BUTTON
+      # =========================
+      - conditions:
+          - "{{ button == 'off' and action == 'press' }}"
+        sequence:
+          - wait_for_trigger:
+              - platform: event
+                event_type: lutron_caseta_button_event
+                event_data:
+                  device_id: "{{ device_id }}"
+                  button_type: "off"
+                  action: "press"
+            timeout:
+              milliseconds: !input double_press_delay
+            continue_on_timeout: true
+
+          - choose:
+              - conditions:
+                  - "{{ wait.trigger is not none }}"
+                sequence: !input off_double_press
+            default: !input off_press
+
+          - delay:
+              milliseconds: !input hold_delay
+
+          - wait_for_trigger:
+              - platform: event
+                event_type: lutron_caseta_button_event
+                event_data:
+                  device_id: "{{ device_id }}"
+                  button_type: "off"
+                  action: "release"
+            timeout:
+              milliseconds: 10
+            continue_on_timeout: true
+
+          - choose:
+              - conditions:
+                  - "{{ wait.trigger is none }}"
+                sequence: !input off_hold
+
+      - conditions:
+          - "{{ button == 'off' and action == 'release' }}"
+        sequence: !input off_release
