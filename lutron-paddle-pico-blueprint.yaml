@@ -1,5 +1,5 @@
 blueprint:
-  name: Lutron Pico Paddle (PJ2-1P-GXX) – Advanced Button Actions
+  name: Lutron Pico Paddle (two button) – Advanced Button Actions
   description: >
     Supports press, double press, hold, and release for ON/OFF
     buttons on a Lutron Pico Paddle using the official Caséta integration.
